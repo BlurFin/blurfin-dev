@@ -1,0 +1,27 @@
+{
+  "name": "blurfin-platform",
+  "version": "1.0.0",
+  "description": "BlurFin 관상어 경매/거래 플랫폼",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:local": "concurrently \"npm run dev:web:local\" \"npm run dev:api:local\"",
+    "dev:web:local": "npm run dev:local --workspace=apps/web",
+    "dev:api:local": "npm run dev:local --workspace=apps/api",
+    "build": "npm run build --workspace=apps/web && npm run build --workspace=apps/api",
+    "start": "npm run start --workspace=apps/api",
+    "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+} 
