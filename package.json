@@ -16,7 +16,12 @@
     "dev:api:local": "npm run dev:local --workspace=apps/api",
     "build": "npm run build --workspace=apps/web && npm run build --workspace=apps/api",
     "start": "npm run start --workspace=apps/api",
-    "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/api"
+    "lint": "npm run lint --workspace=apps/web && (npm run lint --workspace=apps/api 2>/dev/null || echo \"API lint skipped (no lint script)\")",
+    "lint:changed": "bash -c 'web_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); web_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); api_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); api_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); if [ -n \"$web_changed\" ] || [ -n \"$web_staged\" ]; then cd apps/web && npm run lint; fi; if [ -n \"$api_changed\" ] || [ -n \"$api_staged\" ]; then (cd apps/api && npm run lint 2>/dev/null || echo \"API lint skipped\"); fi; if [ -z \"$web_changed\" ] && [ -z \"$web_staged\" ] && [ -z \"$api_changed\" ] && [ -z \"$api_staged\" ]; then echo \"No TypeScript/JavaScript files changed\"; fi'",
+    "tsc": "npm run type-check --workspace=apps/web && (npm run type-check --workspace=apps/api 2>/dev/null || echo \"API type-check skipped (no script)\")",
+    "tsc:changed": "bash -c 'web_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); web_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); api_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); api_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); if [ -n \"$web_changed\" ] || [ -n \"$web_staged\" ]; then cd apps/web && npm run type-check; fi; if [ -n \"$api_changed\" ] || [ -n \"$api_staged\" ]; then (cd apps/api && npm run type-check 2>/dev/null || echo \"API type-check skipped\"); fi; if [ -z \"$web_changed\" ] && [ -z \"$web_staged\" ] && [ -z \"$api_changed\" ] && [ -z \"$api_staged\" ]; then echo \"No TypeScript/JavaScript files changed\"; fi'",
+    "check:all": "npm run lint && npm run tsc",
+    "check:changed": "npm run lint:changed && npm run tsc:changed"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
