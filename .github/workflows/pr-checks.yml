@@ -24,9 +24,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
-          npm install --workspace=apps/web
-          npm install --workspace=apps/api
+          # Install with timeout and verbose logging
+          timeout 300 npm install --include-workspace-root --verbose
 
       - name: Run lint and TypeScript checks
         run: |
