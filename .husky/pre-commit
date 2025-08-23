@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 스테이징된 파일에 대해 lint와 타입 검사 실행
+npx lint-staged
