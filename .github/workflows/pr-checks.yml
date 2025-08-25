@@ -9,6 +9,8 @@ jobs:
   code-quality:
     name: Lint and TypeScript Checks
     runs-on: ubuntu-latest
+    env:
+      HUSKY: 0 # Disable Husky in CI
 
     steps:
       - name: Checkout code
@@ -21,10 +23,14 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            apps/*/package-lock.json
 
       - name: Install dependencies
         run: |
-          npm install --include-workspace-root
+          # Skip Husky installation in CI environment
+          npm ci --include-workspace-root --ignore-scripts
 
       - name: Run lint and TypeScript checks
         run: |
