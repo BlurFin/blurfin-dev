@@ -1,6 +1,9 @@
 node_modules
 docs
 
+# Version tracking (keep in git for collaboration)
+# .version/
+
 # Yarn
 yarn-error.log
 .yarn/cache

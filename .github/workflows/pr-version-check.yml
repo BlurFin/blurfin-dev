@@ -1,0 +1,123 @@
+name: Version Classification
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  classify-version:
+    name: Classify Version Impact
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR commits and analyze
+        run: |
+          echo "🔍 Getting PR commits and analyzing..."
+
+          # Get commit messages using git log
+          git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/commits.txt
+
+          echo "📋 Commit messages:"
+          cat /tmp/commits.txt
+
+          # Analyze version impact
+          HAS_MAJOR=false
+          HAS_MINOR=false
+          HAS_PATCH=false
+          VALID_COMMITS=true
+
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              echo "Processing: $commit_title"
+              
+              # Check version impact
+              if echo "$commit_title" | grep -qE "^major:"; then
+                HAS_MAJOR=true
+                echo "🔴 Found MAJOR commit!"
+              elif echo "$commit_title" | grep -qE "^feat:"; then
+                HAS_MINOR=true
+                echo "🟡 Found MINOR commit!"
+              elif echo "$commit_title" | grep -qE "^fix:"; then
+                HAS_PATCH=true
+                echo "🟢 Found PATCH commit!"
+              elif echo "$commit_title" | grep -qE "^perf:"; then
+                HAS_PATCH=true
+                echo "🟢 Found PERF commit!"
+              fi
+              
+              # Check commit format
+              if ! echo "$commit_title" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:"; then
+                echo "❌ Invalid commit format: $commit_title"
+                VALID_COMMITS=false
+              else
+                echo "✅ Valid commit format: $commit_title"
+              fi
+            fi
+          done < /tmp/commits.txt
+
+          # Determine version type
+          if [ "$VALID_COMMITS" = "false" ]; then
+            VERSION_TYPE="invalid"
+            CHANGE_DESC="잘못된 커밋 형식"
+          elif [ "$HAS_MAJOR" = "true" ]; then
+            VERSION_TYPE="major"
+            CHANGE_DESC="Major 버전 증가 (1.0.0)"
+          elif [ "$HAS_MINOR" = "true" ]; then
+            VERSION_TYPE="minor"
+            CHANGE_DESC="Minor 버전 증가 (0.1.0)"
+          elif [ "$HAS_PATCH" = "true" ]; then
+            VERSION_TYPE="patch"
+            CHANGE_DESC="Patch 버전 증가 (0.0.1)"
+          else
+            VERSION_TYPE="none"
+            CHANGE_DESC="버전 변화 없음 (0.0.0)"
+          fi
+
+          echo "📊 Final result: $VERSION_TYPE - $CHANGE_DESC"
+
+          # Create commit list for PR comment
+          COMMIT_LIST=""
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+            fi
+          done < /tmp/commits.txt
+
+          # Add PR comment if valid
+          if [ "$VERSION_TYPE" != "invalid" ]; then
+            gh pr comment ${{ github.event.number }} --body "## 📦 $CHANGE_DESC
+
+          ### 📋 커밋 목록
+          $COMMIT_LIST"
+          fi
+
+          # Set status check
+          if [ "$VERSION_TYPE" = "invalid" ]; then
+            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
+              --method POST \
+              --field state="failure" \
+              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --field description="Invalid commit format detected" \
+              --field context="version-classification"
+            exit 1
+          else
+            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
+              --method POST \
+              --field state="success" \
+              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --field description="Version classified as $VERSION_TYPE" \
+              --field context="version-classification"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
