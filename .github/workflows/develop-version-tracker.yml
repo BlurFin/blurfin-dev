@@ -16,11 +16,6 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Add develop summary comment
         run: |
           echo "📝 Adding develop branch summary..."
@@ -28,30 +23,18 @@ jobs:
           # PR 정보 가져오기
           PR_TITLE="${{ github.event.pull_request.title }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
 
-          # Get commit messages using git log
-          git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/commits.txt
+          echo "Merged PR: $PR_TITLE by $PR_AUTHOR"
 
-          # 커밋 리스트 생성
-          COMMIT_LIST=""
-          while IFS= read -r commit; do
-            if [[ -n "$commit" ]]; then
-              COMMIT_LIST="$COMMIT_LIST- $commit"$'\n'
-            fi
-          done < /tmp/commits.txt
+          # develop 브랜치에 간단한 댓글 추가
+          gh pr comment $PR_NUMBER --body "## 🎉 develop 브랜치에 병합 완료!
 
-          # develop 브랜치에 댓글 추가 (마지막 커밋에)
-          gh api repos/${{ github.repository }}/commits/${{ github.event.pull_request.merge_commit_sha }}/comments \
-            --method POST \
-            --field body="## 📦 Develop 브랜치 업데이트
+          **병합된 PR:** $PR_TITLE
+          **작성자:** @$PR_AUTHOR
+          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
-          ### 🔄 병합된 작업: [$PR_TITLE](#$PR_NUMBER)
-
-          <details>
-          <summary><strong>📋 커밋 목록 보기</strong></summary>
-
-          $COMMIT_LIST
-          </details>"
+          > 🚀 이 작업이 develop 브랜치에 성공적으로 병합되었습니다!"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

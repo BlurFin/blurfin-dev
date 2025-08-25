@@ -4,14 +4,6 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened]
-    paths:
-      - "apps/**/*.ts"
-      - "apps/**/*.tsx"
-      - "packages/**/*.ts"
-      - "packages/**/*.tsx"
-      - "**/tsconfig.json"
-      - "package.json"
-      - "yarn.lock"
 
 jobs:
   typescript-check:
@@ -42,6 +34,18 @@ jobs:
 
       - name: Run TypeScript checks on changed files
         run: |
-          echo "🔍 Running TypeScript checks on changed files..."
-          yarn tsc:changed
-          echo "✅ TypeScript checks passed!"
+          echo "🔍 Checking for files to type-check..."
+
+          # 변경된 파일 중 TypeScript 대상 파일이 있는지 확인
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep -E '\.(ts|tsx)$' | grep -E '^(apps|packages)/' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "📋 No TypeScript files changed in apps or packages directories"
+            echo "✅ TypeScript check skipped - no relevant files to check"
+          else
+            echo "📋 Found files to type-check:"
+            echo "$CHANGED_FILES"
+            echo "🔍 Running TypeScript checks on changed files..."
+            yarn tsc:changed
+            echo "✅ TypeScript checks passed!"
+          fi

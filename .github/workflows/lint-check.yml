@@ -4,19 +4,6 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened]
-    paths:
-      - "apps/**/*.ts"
-      - "apps/**/*.tsx"
-      - "apps/**/*.js"
-      - "apps/**/*.jsx"
-      - "packages/**/*.ts"
-      - "packages/**/*.tsx"
-      - "packages/**/*.js"
-      - "packages/**/*.jsx"
-      - "**/.eslintrc*"
-      - "**/eslint.config.*"
-      - "package.json"
-      - "yarn.lock"
 
 jobs:
   lint-check:
@@ -47,6 +34,18 @@ jobs:
 
       - name: Run lint checks on changed files
         run: |
-          echo "🔍 Running lint checks on changed files..."
-          yarn lint:changed
-          echo "✅ Lint checks passed!"
+          echo "🔍 Checking for files to lint..."
+
+          # 변경된 파일 중 lint 대상 파일이 있는지 확인
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep -E '\.(ts|tsx|js|jsx)$' | grep -E '^(apps|packages)/' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "📋 No TypeScript/JavaScript files changed in apps or packages directories"
+            echo "✅ Lint check skipped - no relevant files to check"
+          else
+            echo "📋 Found files to lint:"
+            echo "$CHANGED_FILES"
+            echo "🔍 Running lint checks on changed files..."
+            yarn lint:changed
+            echo "✅ Lint checks passed!"
+          fi
