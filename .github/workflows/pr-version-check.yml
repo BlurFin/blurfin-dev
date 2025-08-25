@@ -1,4 +1,4 @@
-name: PR Version Classification
+name: Version Classification
 
 on:
   pull_request:
@@ -64,13 +64,19 @@ jobs:
             RELEASE_TYPE="major"
             echo "🔴 Manual MAJOR version detected!"
           else
-            # conventional-recommended-bump로 버전 타입 분석 (feat!, BREAKING CHANGE 제외)
-            RELEASE_TYPE=$(yarn version:recommend 2>/dev/null || echo "unknown")
+            # conventional-recommended-bump로 버전 타입 분석
+            RELEASE_TYPE=$(yarn version:recommend 2>/dev/null || echo "none")
+            echo "🔍 Raw conventional-recommended-bump result: $RELEASE_TYPE"
             
             # BREAKING CHANGE나 ! 표시가 있으면 minor로 다운그레이드
             if [ "$RELEASE_TYPE" = "major" ]; then
               echo "⚠️ Auto-detected MAJOR downgraded to MINOR (use 'major:' for intentional major)"
               RELEASE_TYPE="minor"
+            fi
+            
+            # unknown을 none으로 변환
+            if [ "$RELEASE_TYPE" = "unknown" ]; then
+              RELEASE_TYPE="none"
             fi
           fi
 
@@ -181,12 +187,21 @@ jobs:
 
           # 커밋 리스트 생성
           COMMITS="${{ steps.commits.outputs.commits }}"
+          echo "🔍 Debug - Commits received:"
+          echo "$COMMITS"
+
           COMMIT_LIST=""
-          while IFS= read -r commit_title; do
-            if [[ -n "$commit_title" ]]; then
-              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
-            fi
-          done <<< "$COMMITS"
+          if [[ -n "$COMMITS" ]]; then
+            while IFS= read -r commit_title; do
+              if [[ -n "$commit_title" ]]; then
+                COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+                echo "✅ Added commit: $commit_title"
+              fi
+            done <<< "$COMMITS"
+          else
+            echo "❌ No commits found!"
+            COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
+          fi
 
           gh pr comment ${{ github.event.number }} --body "## 📦 ${{ steps.expected_version.outputs.change_desc }}
 
