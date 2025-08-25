@@ -25,7 +25,9 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
           # PR의 커밋들 가져오기 (제목만)
-          COMMITS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/commits --jq -r '.[].commit.message' | head -n 1)
+          COMMITS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/commits --jq -r '.[].commit.message' | while IFS= read -r message; do
+            echo "$message" | head -n 1
+          done)
 
           # 커밋 리스트 생성
           COMMIT_LIST=""
