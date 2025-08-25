@@ -4,14 +4,6 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened]
-    paths:
-      - "apps/**/*.ts"
-      - "apps/**/*.tsx"
-      - "packages/**/*.ts"
-      - "packages/**/*.tsx"
-      - "**/tsconfig.json"
-      - "package.json"
-      - "yarn.lock"
 
 jobs:
   typescript-check:

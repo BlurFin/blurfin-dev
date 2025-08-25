@@ -125,22 +125,12 @@ jobs:
           $COMMIT_LIST"
           fi
 
-          # Set status check
+          # 워크플로우 실패 처리 (수동 상태 체크 완전 제거)
           if [ "$VERSION_TYPE" = "invalid" ]; then
-            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
-              --method POST \
-              --field state="failure" \
-              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-              --field description="Invalid commit format detected" \
-              --field context="version-classification"
+            echo "❌ Invalid commit format detected - failing workflow"
             exit 1
           else
-            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
-              --method POST \
-              --field state="success" \
-              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-              --field description="Version classified as $VERSION_TYPE" \
-              --field context="version-classification"
+            echo "✅ Version classification completed: $VERSION_TYPE"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
