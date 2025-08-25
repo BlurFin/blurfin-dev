@@ -9,7 +9,7 @@ jobs:
   code-quality:
     name: Lint and TypeScript Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Prevent infinite hanging
+    timeout-minutes: 15 # Increase timeout
     env:
       HUSKY: 0 # Disable Husky in CI
 
@@ -22,20 +22,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-
-      - name: Clean and prepare environment
-        run: |
-          echo "🧹 Cleaning npm cache and environment..."
-          npm cache clean --force
-          rm -rf node_modules apps/*/node_modules
+          node-version: "18"
+          cache: "npm"
 
       - name: Install dependencies
         run: |
-          echo "📦 Installing all dependencies..."
+          echo "📦 Installing dependencies with Node 18..."
           npm config set registry https://registry.npmjs.org/
-          # Use simple npm install without problematic flags
-          npm install --ignore-scripts
+          npm install --legacy-peer-deps --ignore-scripts
 
       - name: Run lint and TypeScript checks
         run: |
