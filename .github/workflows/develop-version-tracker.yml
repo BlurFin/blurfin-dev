@@ -2,7 +2,7 @@ name: Develop Version Tracker
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     types: [closed]
 
 jobs:
