@@ -16,6 +16,11 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Find develop to main PR and update version status
         run: |
           echo "🔍 Finding develop → main PR to update version status..."
@@ -39,32 +44,28 @@ jobs:
 
           echo "✅ Merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
 
+          # 병합된 PR의 커밋 목록 가져오기
+          echo "📝 Getting commit list from merged PR..."
+          git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/merged_commits.txt
+
+          COMMIT_LIST=""
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+            fi
+          done < /tmp/merged_commits.txt
+
+          # 커밋 목록이 비어있으면 기본 메시지 추가
+          if [[ -z "$COMMIT_LIST" ]]; then
+            COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
+          fi
+
           # 현재 버전 정보 (0.0.0에서 시작)
           CURRENT_VERSION="0.0.0"
 
           # 다음 버전 계산 (간단한 예시 - 실제로는 더 복잡한 로직 필요)
           # TODO: .version/next-release.json 파일 읽거나 conventional-changelog로 계산
           NEXT_VERSION="0.1.0"  # 임시로 설정
-
-          # develop → main PR에 버전 상태 댓글 추가/업데이트
-          COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
-
-          **현재 버전:** \`$CURRENT_VERSION\`  
-          **다음 릴리즈 버전:** \`$NEXT_VERSION\`
-
-          ### 🔄 병합된 작업들
-
-          <details>
-          <summary><strong>📋 최근 병합된 PR: #$MERGED_PR_NUMBER</strong></summary>
-
-          **제목:** $MERGED_PR_TITLE  
-          **작성자:** @$MERGED_PR_AUTHOR  
-          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
-          </details>
-
-          ---
-          *이 댓글은 develop 브랜치에 작업이 병합될 때마다 자동으로 업데이트됩니다.*"
 
           # 기존 댓글 찾기 (봇이 작성한 댓글 중에서)
           EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
@@ -73,11 +74,63 @@ jobs:
 
           if [ -n "$EXISTING_COMMENT_ID" ]; then
             echo "🔄 Updating existing comment #$EXISTING_COMMENT_ID"
+            
+            # 기존 댓글 내용 가져오기
+            EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID --jq '.body')
+            
+            # 새로운 PR 정보를 기존 내용에 추가
+            NEW_PR_SECTION="
+          <details>
+          <summary><strong>📋 $MERGED_PR_TITLE</strong></summary>
+
+          **PR 번호:** #$MERGED_PR_NUMBER  
+          **작성자:** @$MERGED_PR_AUTHOR  
+          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          ### 📝 커밋 목록
+          $COMMIT_LIST
+          </details>"
+
+            # 기존 내용에서 "### 🔄 병합된 작업들" 섹션 찾아서 새로운 내용 추가
+            if echo "$EXISTING_BODY" | grep -q "### 🔄 병합된 작업들"; then
+              # 기존 내용에서 "### 🔄 병합된 작업들" 이후 부분을 새로운 내용으로 교체
+              UPDATED_BODY=$(echo "$EXISTING_BODY" | sed '/### 🔄 병합된 작업들/,$d')
+              UPDATED_BODY="$UPDATED_BODY
+
+          ### 🔄 병합된 작업들$NEW_PR_SECTION"
+            else
+              # 기존 내용에 새로운 섹션 추가
+              UPDATED_BODY="$EXISTING_BODY
+
+          ### 🔄 병합된 작업들$NEW_PR_SECTION"
+            fi
+
+            # 댓글 업데이트
             gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID \
               --method PATCH \
-              --field body="$COMMENT_BODY"
+              --field body="$UPDATED_BODY"
           else
             echo "📝 Creating new version status comment"
+            
+            # 새로운 댓글 생성
+            COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
+
+          **현재 버전:** \`$CURRENT_VERSION\`  
+          **다음 릴리즈 버전:** \`$NEXT_VERSION\`
+
+          ### 🔄 병합된 작업들
+
+          <details>
+          <summary><strong>📋 $MERGED_PR_TITLE</strong></summary>
+
+          **PR 번호:** #$MERGED_PR_NUMBER  
+          **작성자:** @$MERGED_PR_AUTHOR  
+          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          ### 📝 커밋 목록
+          $COMMIT_LIST
+          </details>"
+
             gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
               --method POST \
               --field body="$COMMENT_BODY"
