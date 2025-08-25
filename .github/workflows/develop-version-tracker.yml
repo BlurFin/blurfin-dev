@@ -135,6 +135,75 @@ jobs:
           echo "📝 Version tracking file updated:"
           cat .version/next-release.json
 
+      - name: Get merged PR info
+        if: steps.next_version.outputs.change_type != 'none'
+        id: pr_info
+        run: |
+          echo "🔍 Getting merged PR information..."
+
+          # 마지막 커밋의 PR 정보 가져오기
+          LAST_COMMIT=$(git log -1 --format="%H")
+          echo "Last commit: $LAST_COMMIT"
+
+          # PR 번호 찾기 (merge commit에서)
+          PR_NUMBER=$(git log --merges -1 --pretty=format:"%s" | grep -oE "#[0-9]+" | head -1 | cut -c2-)
+
+          if [[ -n "$PR_NUMBER" ]]; then
+            echo "Found PR: #$PR_NUMBER"
+            
+            # PR 제목 가져오기
+            PR_TITLE=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.title')
+            echo "PR Title: $PR_TITLE"
+            
+            # PR의 커밋 목록 가져오기
+            PR_COMMITS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/commits --jq -r '.[].commit.message' | while IFS= read -r message; do
+              echo "$message" | head -n 1
+            done)
+            
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+            echo "pr_commits<<EOF" >> $GITHUB_OUTPUT
+            echo "$PR_COMMITS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No PR found for this merge"
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "pr_title=Direct commit" >> $GITHUB_OUTPUT
+            echo "pr_commits=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add develop branch comment
+        if: steps.next_version.outputs.change_type != 'none' && steps.pr_info.outputs.pr_number != ''
+        run: |
+          echo "📝 Adding develop branch summary comment..."
+
+          # 접기/펼치기 가능한 커밋 리스트 생성
+          PR_COMMITS="${{ steps.pr_info.outputs.pr_commits }}"
+          COMMIT_LIST=""
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+            fi
+          done <<< "$PR_COMMITS"
+
+          # 이슈에 댓글 추가 (develop 브랜치 요약용)
+          gh issue create --title "📦 Develop Branch Update - v${{ steps.next_version.outputs.next }}" --body "## 📊 버전 업데이트: ${{ steps.current_version.outputs.current }} → ${{ steps.next_version.outputs.next }}
+
+          ### 🔄 병합된 작업
+          <details>
+          <summary><strong>📋 [${{ steps.pr_info.outputs.pr_title }}](#${{ steps.pr_info.outputs.pr_number }})</strong></summary>
+
+          #### 커밋 목록:
+          $COMMIT_LIST
+          </details>
+
+          ---
+          *다음 릴리즈 버전: v${{ steps.next_version.outputs.next }}*" || echo "Issue creation failed, continuing..."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Commit version tracking
         if: steps.next_version.outputs.change_type != 'none'
         run: |
