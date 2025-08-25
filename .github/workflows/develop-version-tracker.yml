@@ -101,11 +101,9 @@ jobs:
 
             # 기존 내용에서 "### 🔄 병합된 작업들" 섹션 찾아서 새로운 내용 추가
             if echo "$EXISTING_BODY" | grep -q "### 🔄 병합된 작업들"; then
-              # 기존 내용에서 "### 🔄 병합된 작업들" 이후 부분을 새로운 내용으로 교체
-              UPDATED_BODY=$(echo "$EXISTING_BODY" | sed '/### 🔄 병합된 작업들/,$d')
-              UPDATED_BODY="$UPDATED_BODY
-
-          ### 🔄 병합된 작업들$NEW_PR_SECTION"
+              # 기존 내용에서 "### 🔄 병합된 작업들" 섹션을 찾아서 그 안에 새로운 PR 정보 추가
+              # sed를 사용하여 "### 🔄 병합된 작업들" 다음 줄에 새로운 PR 정보 삽입
+              UPDATED_BODY=$(echo "$EXISTING_BODY" | sed "/### 🔄 병합된 작업들/a\\$NEW_PR_SECTION")
             else
               # 기존 내용에 새로운 섹션 추가
               UPDATED_BODY="$EXISTING_BODY
