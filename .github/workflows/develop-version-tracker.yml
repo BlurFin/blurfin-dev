@@ -4,216 +4,49 @@ on:
   pull_request:
     branches: [develop]
     types: [closed]
-  push:
-    branches: [develop]
 
 jobs:
   track-version:
-    name: Track Next Release Version
+    name: Track Merged PR
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    if: github.event.pull_request.merged == true
 
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20.17.0"
-
-      - name: Get current version
-        id: current_version
+      - name: Add develop summary comment
         run: |
-          # package.json에서 현재 버전 가져오기
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Current version: $CURRENT_VERSION"
+          echo "📝 Adding develop branch summary..."
 
-      - name: Get version changes since last release
-        id: version_changes
-        run: |
-          echo "🔍 Analyzing commits since last release..."
+          # PR 정보 가져오기
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
 
-          # 마지막 릴리즈 태그 찾기
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # PR의 커밋들 가져오기 (제목만)
+          COMMITS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/commits --jq -r '.[].commit.message' | head -n 1)
 
-          if [ -z "$LAST_TAG" ]; then
-            echo "No previous tags found, analyzing all commits on develop"
-            COMMITS=$(git log develop --pretty=format:"%s" --no-merges)
-          else
-            echo "Last release tag: $LAST_TAG"
-            COMMITS=$(git log ${LAST_TAG}..develop --pretty=format:"%s" --no-merges)
-          fi
-
-          echo "Commits to analyze:"
-          echo "$COMMITS"
-
-          # 버전 변경 사항 분석
-          HAS_MAJOR=false
-          HAS_MINOR=false
-          HAS_PATCH=false
-
-          # BREAKING CHANGE 체크
-          if echo "$COMMITS" | grep -iE "(BREAKING CHANGE|breaking:|major:)" > /dev/null; then
-            HAS_MAJOR=true
-          fi
-
-          # feat 체크
-          if echo "$COMMITS" | grep -iE "(feat:|feature:|minor:)" > /dev/null; then
-            HAS_MINOR=true
-          fi
-
-          # fix, patch 체크
-          if echo "$COMMITS" | grep -iE "(fix:|patch:|bug:|hotfix:)" > /dev/null; then
-            HAS_PATCH=true
-          fi
-
-          echo "has_major=$HAS_MAJOR" >> $GITHUB_OUTPUT
-          echo "has_minor=$HAS_MINOR" >> $GITHUB_OUTPUT
-          echo "has_patch=$HAS_PATCH" >> $GITHUB_OUTPUT
-
-          echo "📊 Version analysis:"
-          echo "- Major changes: $HAS_MAJOR"
-          echo "- Minor changes: $HAS_MINOR"  
-          echo "- Patch changes: $HAS_PATCH"
-
-      - name: Install dependencies
-        run: |
-          rm -rf node_modules/
-          rm -f package-lock.json
-          yarn install --frozen-lockfile
-
-      - name: Calculate next version using conventional-changelog
-        id: next_version
-        run: |
-          echo "🧮 Using conventional tools for version calculation..."
-
-          # Node.js 스크립트 실행
-          yarn version:next
-
-          # 결과 읽기
-          if [ -f ".version/next-release.json" ]; then
-            NEXT_VERSION=$(node -p "require('./.version/next-release.json').next")
-            CHANGE_TYPE=$(node -p "require('./.version/next-release.json').changeType")
-            
-            echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
-            echo "change_type=$CHANGE_TYPE" >> $GITHUB_OUTPUT
-            
-            echo "🚀 Next version will be: $NEXT_VERSION ($CHANGE_TYPE)"
-          else
-            echo "❌ Failed to calculate version"
-            exit 1
-          fi
-
-      - name: Update version tracking file
-        if: steps.next_version.outputs.change_type != 'none'
-        run: |
-          # 버전 추적 파일 생성/업데이트
-          mkdir -p .version
-          cat > .version/next-release.json << EOF
-          {
-            "current": "${{ steps.current_version.outputs.current }}",
-            "next": "${{ steps.next_version.outputs.next }}",
-            "changeType": "${{ steps.next_version.outputs.change_type }}",
-            "updatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "changes": {
-              "major": ${{ steps.version_changes.outputs.has_major }},
-              "minor": ${{ steps.version_changes.outputs.has_minor }},
-              "patch": ${{ steps.version_changes.outputs.has_patch }}
-            }
-          }
-          EOF
-
-          echo "📝 Version tracking file updated:"
-          cat .version/next-release.json
-
-      - name: Get merged PR info
-        if: steps.next_version.outputs.change_type != 'none'
-        id: pr_info
-        run: |
-          echo "🔍 Getting merged PR information..."
-
-          # 마지막 커밋의 PR 정보 가져오기
-          LAST_COMMIT=$(git log -1 --format="%H")
-          echo "Last commit: $LAST_COMMIT"
-
-          # PR 번호 찾기 (merge commit에서)
-          PR_NUMBER=$(git log --merges -1 --pretty=format:"%s" | grep -oE "#[0-9]+" | head -1 | cut -c2-)
-
-          if [[ -n "$PR_NUMBER" ]]; then
-            echo "Found PR: #$PR_NUMBER"
-            
-            # PR 제목 가져오기
-            PR_TITLE=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER --jq '.title')
-            echo "PR Title: $PR_TITLE"
-            
-            # PR의 커밋 목록 가져오기
-            PR_COMMITS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/commits --jq -r '.[].commit.message' | while IFS= read -r message; do
-              echo "$message" | head -n 1
-            done)
-            
-            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
-            echo "pr_commits<<EOF" >> $GITHUB_OUTPUT
-            echo "$PR_COMMITS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "No PR found for this merge"
-            echo "pr_number=" >> $GITHUB_OUTPUT
-            echo "pr_title=Direct commit" >> $GITHUB_OUTPUT
-            echo "pr_commits=" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Add develop branch comment
-        if: steps.next_version.outputs.change_type != 'none' && steps.pr_info.outputs.pr_number != ''
-        run: |
-          echo "📝 Adding develop branch summary comment..."
-
-          # 접기/펼치기 가능한 커밋 리스트 생성
-          PR_COMMITS="${{ steps.pr_info.outputs.pr_commits }}"
+          # 커밋 리스트 생성
           COMMIT_LIST=""
-          while IFS= read -r commit_title; do
-            if [[ -n "$commit_title" ]]; then
-              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+          while IFS= read -r commit; do
+            if [[ -n "$commit" ]]; then
+              COMMIT_LIST="$COMMIT_LIST- $commit"$'\n'
             fi
-          done <<< "$PR_COMMITS"
+          done <<< "$COMMITS"
 
-          # 이슈에 댓글 추가 (develop 브랜치 요약용)
-          gh issue create --title "📦 Develop Branch Update - v${{ steps.next_version.outputs.next }}" --body "## 📊 버전 업데이트: ${{ steps.current_version.outputs.current }} → ${{ steps.next_version.outputs.next }}
+          # develop 브랜치에 댓글 추가 (마지막 커밋에)
+          gh api repos/${{ github.repository }}/commits/${{ github.event.pull_request.merge_commit_sha }}/comments \
+            --method POST \
+            --field body="## 📦 Develop 브랜치 업데이트
 
-          ### 🔄 병합된 작업
+          ### 🔄 병합된 작업: [$PR_TITLE](#$PR_NUMBER)
+
           <details>
-          <summary><strong>📋 [${{ steps.pr_info.outputs.pr_title }}](#${{ steps.pr_info.outputs.pr_number }})</strong></summary>
+          <summary><strong>📋 커밋 목록 보기</strong></summary>
 
-          #### 커밋 목록:
           $COMMIT_LIST
-          </details>
+          </details>"
 
-          ---
-          *다음 릴리즈 버전: v${{ steps.next_version.outputs.next }}*" || echo "Issue creation failed, continuing..."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit version tracking
-        if: steps.next_version.outputs.change_type != 'none'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .version/next-release.json
-
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: update next release version to ${{ steps.next_version.outputs.next }} [skip ci]"
-            git push
-          fi
