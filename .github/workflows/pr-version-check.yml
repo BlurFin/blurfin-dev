@@ -25,9 +25,10 @@ jobs:
         id: commits
         run: |
           echo "Getting commits from PR..."
-          COMMITS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits --jq '.[].commit.message')
+          # 각 커밋의 첫 번째 줄(제목)만 추출
+          COMMIT_TITLES=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits --jq -r '.[].commit.message | split("\n")[0]')
           echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "$COMMIT_TITLES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,14 +73,14 @@ jobs:
           # 커밋 메시지가 컨벤션을 따르는지 확인
           VALID_COMMITS=true
 
-          # 각 커밋의 첫 번째 줄(제목)만 conventional commits 형식 확인 (major 타입 추가)
-          while IFS= read -r commit; do
-            if [[ -n "$commit" ]]; then
-              # 커밋 메시지의 첫 번째 줄만 추출
-              FIRST_LINE=$(echo "$commit" | head -n 1)
-              if ! echo "$FIRST_LINE" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:" ; then
-                echo "❌ Invalid commit format: $FIRST_LINE"
+          # 각 커밋 제목이 conventional commits 형식인지 확인 (major 타입 추가)
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              if ! echo "$commit_title" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:" ; then
+                echo "❌ Invalid commit format: $commit_title"
                 VALID_COMMITS=false
+              else
+                echo "✅ Valid commit format: $commit_title"
               fi
             fi
           done <<< "$COMMITS"
