@@ -7,7 +7,7 @@ on:
 
 jobs:
   track-version:
-    name: Track Merged PR
+    name: Update Develop Version Status
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
 
@@ -16,65 +16,74 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Add develop summary comment
+      - name: Find develop to main PR and update version status
         run: |
-          echo "📝 Adding develop branch summary..."
+          echo "🔍 Finding develop → main PR to update version status..."
 
-          # PR 정보 가져오기
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
-          MERGE_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          # 현재 develop → main PR 찾기
+          DEVELOP_TO_MAIN_PR=$(gh api repos/${{ github.repository }}/pulls \
+            --jq '.[] | select(.head.ref == "develop" and .base.ref == "main" and .state == "open") | .number' \
+            | head -1)
 
-          echo "Merged PR: $PR_TITLE by $PR_AUTHOR"
-          echo "Branch: $HEAD_BRANCH → $BASE_BRANCH"
-
-          # 브랜치별 메시지 다르게 설정
-          if [ "$BASE_BRANCH" = "develop" ]; then
-            MESSAGE="## 🎉 develop 브랜치에 병합 완료!
-
-          **병합된 PR:** $PR_TITLE  
-          **작성자:** @$PR_AUTHOR  
-          **병합 시간:** $MERGE_TIME
-
-          > 🚀 이 작업이 develop 브랜치에 성공적으로 병합되었습니다!"
-          elif [ "$BASE_BRANCH" = "main" ]; then
-            MESSAGE="## 🚀 main 브랜치에 배포 완료!
-
-          **배포된 PR:** $PR_TITLE  
-          **배포자:** @$PR_AUTHOR  
-          **배포 시간:** $MERGE_TIME
-
-          > ✨ 이 릴리즈가 main 브랜치에 성공적으로 배포되었습니다!"
-          else
-            MESSAGE="## 📦 브랜치 병합 완료!
-
-          **병합된 PR:** $PR_TITLE  
-          **작성자:** @$PR_AUTHOR  
-          **병합 시간:** $MERGE_TIME"
+          if [ -z "$DEVELOP_TO_MAIN_PR" ]; then
+            echo "⚠️ No open develop → main PR found. Skipping version tracking."
+            exit 0
           fi
 
-          # GitHub API로 댓글 추가 (재시도 로직 포함)
-          for i in {1..3}; do
-            echo "Attempt $i: Adding comment to PR #$PR_NUMBER..."
-            
-            if gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+          echo "📋 Found develop → main PR: #$DEVELOP_TO_MAIN_PR"
+
+          # 병합된 PR 정보 가져오기
+          MERGED_PR_TITLE="${{ github.event.pull_request.title }}"
+          MERGED_PR_NUMBER="${{ github.event.pull_request.number }}"
+          MERGED_PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+
+          echo "✅ Merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
+
+          # 현재 버전 정보 (0.0.0에서 시작)
+          CURRENT_VERSION="0.0.0"
+
+          # 다음 버전 계산 (간단한 예시 - 실제로는 더 복잡한 로직 필요)
+          # TODO: .version/next-release.json 파일 읽거나 conventional-changelog로 계산
+          NEXT_VERSION="0.1.0"  # 임시로 설정
+
+          # develop → main PR에 버전 상태 댓글 추가/업데이트
+          COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
+
+          **현재 버전:** \`$CURRENT_VERSION\`  
+          **다음 릴리즈 버전:** \`$NEXT_VERSION\`
+
+          ### 🔄 병합된 작업들
+
+          <details>
+          <summary><strong>📋 최근 병합된 PR: #$MERGED_PR_NUMBER</strong></summary>
+
+          **제목:** $MERGED_PR_TITLE  
+          **작성자:** @$MERGED_PR_AUTHOR  
+          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          </details>
+
+          ---
+          *이 댓글은 develop 브랜치에 작업이 병합될 때마다 자동으로 업데이트됩니다.*"
+
+          # 기존 댓글 찾기 (봇이 작성한 댓글 중에서)
+          EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Develop 브랜치 버전 상태"))) | .id' \
+            | head -1)
+
+          if [ -n "$EXISTING_COMMENT_ID" ]; then
+            echo "🔄 Updating existing comment #$EXISTING_COMMENT_ID"
+            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID \
+              --method PATCH \
+              --field body="$COMMENT_BODY"
+          else
+            echo "📝 Creating new version status comment"
+            gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
               --method POST \
-              --field body="$MESSAGE"; then
-              echo "✅ Successfully added comment to PR #$PR_NUMBER"
-              break
-            else
-              echo "❌ Attempt $i failed, retrying in 5 seconds..."
-              sleep 5
-            fi
-            
-            if [ $i -eq 3 ]; then
-              echo "🔴 All attempts failed, but continuing workflow..."
-              exit 0  # 댓글 실패해도 워크플로우는 성공으로 처리
-            fi
-          done
+              --field body="$COMMENT_BODY"
+          fi
+
+          echo "✅ Successfully updated version status on develop → main PR #$DEVELOP_TO_MAIN_PR"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
