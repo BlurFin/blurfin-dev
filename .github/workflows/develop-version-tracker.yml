@@ -24,17 +24,22 @@ jobs:
           PR_TITLE="${{ github.event.pull_request.title }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
           PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          MERGE_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
           echo "Merged PR: $PR_TITLE by $PR_AUTHOR"
 
-          # develop 브랜치에 간단한 댓글 추가
-          gh pr comment $PR_NUMBER --body "## 🎉 develop 브랜치에 병합 완료!
+          # GitHub API로 직접 댓글 추가 (Git 저장소 불필요)
+          gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --method POST \
+            --field body="## 🎉 develop 브랜치에 병합 완료!
 
-          **병합된 PR:** $PR_TITLE
-          **작성자:** @$PR_AUTHOR
-          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **병합된 PR:** $PR_TITLE  
+          **작성자:** @$PR_AUTHOR  
+          **병합 시간:** $MERGE_TIME
 
           > 🚀 이 작업이 develop 브랜치에 성공적으로 병합되었습니다!"
+
+          echo "✅ Successfully added comment to PR #$PR_NUMBER"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
