@@ -1,0 +1,150 @@
+name: Develop Version Tracker
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [closed]
+  push:
+    branches: [develop]
+
+jobs:
+  track-version:
+    name: Track Next Release Version
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.17.0"
+
+      - name: Get current version
+        id: current_version
+        run: |
+          # package.json에서 현재 버전 가져오기
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Current version: $CURRENT_VERSION"
+
+      - name: Get version changes since last release
+        id: version_changes
+        run: |
+          echo "🔍 Analyzing commits since last release..."
+
+          # 마지막 릴리즈 태그 찾기
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tags found, analyzing all commits on develop"
+            COMMITS=$(git log develop --pretty=format:"%s" --no-merges)
+          else
+            echo "Last release tag: $LAST_TAG"
+            COMMITS=$(git log ${LAST_TAG}..develop --pretty=format:"%s" --no-merges)
+          fi
+
+          echo "Commits to analyze:"
+          echo "$COMMITS"
+
+          # 버전 변경 사항 분석
+          HAS_MAJOR=false
+          HAS_MINOR=false
+          HAS_PATCH=false
+
+          # BREAKING CHANGE 체크
+          if echo "$COMMITS" | grep -iE "(BREAKING CHANGE|breaking:|major:)" > /dev/null; then
+            HAS_MAJOR=true
+          fi
+
+          # feat 체크
+          if echo "$COMMITS" | grep -iE "(feat:|feature:|minor:)" > /dev/null; then
+            HAS_MINOR=true
+          fi
+
+          # fix, patch 체크
+          if echo "$COMMITS" | grep -iE "(fix:|patch:|bug:|hotfix:)" > /dev/null; then
+            HAS_PATCH=true
+          fi
+
+          echo "has_major=$HAS_MAJOR" >> $GITHUB_OUTPUT
+          echo "has_minor=$HAS_MINOR" >> $GITHUB_OUTPUT
+          echo "has_patch=$HAS_PATCH" >> $GITHUB_OUTPUT
+
+          echo "📊 Version analysis:"
+          echo "- Major changes: $HAS_MAJOR"
+          echo "- Minor changes: $HAS_MINOR"  
+          echo "- Patch changes: $HAS_PATCH"
+
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules/
+          rm -f package-lock.json
+          yarn install --frozen-lockfile
+
+      - name: Calculate next version using conventional-changelog
+        id: next_version
+        run: |
+          echo "🧮 Using conventional tools for version calculation..."
+
+          # Node.js 스크립트 실행
+          yarn version:next
+
+          # 결과 읽기
+          if [ -f ".version/next-release.json" ]; then
+            NEXT_VERSION=$(node -p "require('./.version/next-release.json').next")
+            CHANGE_TYPE=$(node -p "require('./.version/next-release.json').changeType")
+            
+            echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
+            echo "change_type=$CHANGE_TYPE" >> $GITHUB_OUTPUT
+            
+            echo "🚀 Next version will be: $NEXT_VERSION ($CHANGE_TYPE)"
+          else
+            echo "❌ Failed to calculate version"
+            exit 1
+          fi
+
+      - name: Update version tracking file
+        if: steps.next_version.outputs.change_type != 'none'
+        run: |
+          # 버전 추적 파일 생성/업데이트
+          mkdir -p .version
+          cat > .version/next-release.json << EOF
+          {
+            "current": "${{ steps.current_version.outputs.current }}",
+            "next": "${{ steps.next_version.outputs.next }}",
+            "changeType": "${{ steps.next_version.outputs.change_type }}",
+            "updatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "changes": {
+              "major": ${{ steps.version_changes.outputs.has_major }},
+              "minor": ${{ steps.version_changes.outputs.has_minor }},
+              "patch": ${{ steps.version_changes.outputs.has_patch }}
+            }
+          }
+          EOF
+
+          echo "📝 Version tracking file updated:"
+          cat .version/next-release.json
+
+      - name: Commit version tracking
+        if: steps.next_version.outputs.change_type != 'none'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .version/next-release.json
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update next release version to ${{ steps.next_version.outputs.next }} [skip ci]"
+            git push
+          fi

@@ -1,6 +1,6 @@
 {
   "name": "blurfin-platform",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "BlurFin 관상어 경매/거래 플랫폼",
   "private": true,
   "workspaces": [
@@ -22,12 +22,20 @@
     "tsc:changed": "bash -c 'web_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); web_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|tsx)$\" | grep \"^apps/web/\" || true); api_changed=$(git diff --name-only HEAD | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); api_staged=$(git diff --cached --name-only | grep -E \"\\.(ts|js)$\" | grep \"^apps/api/\" || true); if [ -n \"$web_changed\" ] || [ -n \"$web_staged\" ]; then cd apps/web && yarn type-check; fi; if [ -n \"$api_changed\" ] || [ -n \"$api_staged\" ]; then (cd apps/api && yarn type-check 2>/dev/null || echo \"API type-check skipped\"); fi; if [ -z \"$web_changed\" ] && [ -z \"$web_staged\" ] && [ -z \"$api_changed\" ] && [ -z \"$api_staged\" ]; then echo \"No TypeScript/JavaScript files changed\"; fi'",
     "check:all": "yarn lint && yarn tsc",
     "check:changed": "yarn lint:changed && yarn tsc:changed",
+    "version:recommend": "conventional-recommended-bump -p angular",
+    "version:bump": "conventional-recommended-bump -p angular --verbose",
+    "changelog:generate": "conventional-changelog -p angular -i CHANGELOG.md -s",
+    "changelog:all": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
+    "version:next": "node scripts/calculate-next-version.js",
     "prepare": "husky"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "concurrently": "^8.2.2",
+    "conventional-changelog-cli": "^5.0.0",
+    "conventional-commits-parser": "^6.2.0",
+    "conventional-recommended-bump": "^11.2.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5"
   },

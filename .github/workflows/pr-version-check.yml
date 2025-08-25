@@ -1,0 +1,215 @@
+name: PR Version Classification
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  classify-version:
+    name: Classify Version Impact
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR commits
+        id: commits
+        run: |
+          echo "Getting commits from PR..."
+          COMMITS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits --jq '.[].commit.message')
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.17.0"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules/
+          rm -f package-lock.json
+          yarn install --frozen-lockfile
+
+      - name: Classify version impact using conventional-changelog
+        id: classify
+        run: |
+          echo "🔍 Using conventional-recommended-bump for analysis..."
+
+          # 커밋 메시지 가져오기
+          COMMITS="${{ steps.commits.outputs.commits }}"
+
+          # major 타입 수동 확인 (우선순위 높음)
+          if echo "$COMMITS" | grep -qE "^major:" ; then
+            RELEASE_TYPE="major"
+            echo "🔴 Manual MAJOR version detected!"
+          else
+            # conventional-recommended-bump로 버전 타입 분석 (feat!, BREAKING CHANGE 제외)
+            RELEASE_TYPE=$(yarn version:recommend 2>/dev/null || echo "unknown")
+            
+            # BREAKING CHANGE나 ! 표시가 있으면 minor로 다운그레이드
+            if [ "$RELEASE_TYPE" = "major" ]; then
+              echo "⚠️ Auto-detected MAJOR downgraded to MINOR (use 'major:' for intentional major)"
+              RELEASE_TYPE="minor"
+            fi
+          fi
+
+          echo "📊 Final analysis result: $RELEASE_TYPE"
+
+          # 커밋 메시지가 컨벤션을 따르는지 확인
+          VALID_COMMITS=true
+
+          # 각 커밋이 conventional commits 형식인지 확인 (major 타입 추가)
+          while IFS= read -r commit; do
+            if [[ -n "$commit" ]] && ! echo "$commit" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:" ; then
+              echo "❌ Invalid commit format: $commit"
+              VALID_COMMITS=false
+            fi
+          done <<< "$COMMITS"
+
+          # 결과에 따른 분류
+          case "$RELEASE_TYPE" in
+            "major")
+              echo "version_type=major" >> $GITHUB_OUTPUT
+              echo "version_label=Major (Breaking Change)" >> $GITHUB_OUTPUT
+              echo "✅ Version classified as: MAJOR"
+              ;;
+            "minor")
+              echo "version_type=minor" >> $GITHUB_OUTPUT
+              echo "version_label=Minor (New Feature)" >> $GITHUB_OUTPUT
+              echo "✅ Version classified as: MINOR"
+              ;;
+            "patch")
+              echo "version_type=patch" >> $GITHUB_OUTPUT
+              echo "version_label=Patch (Bug Fix)" >> $GITHUB_OUTPUT
+              echo "✅ Version classified as: PATCH"
+              ;;
+            *)
+              # 커밋 컨벤션 준수 여부에 따라 처리
+              if [ "$VALID_COMMITS" = "true" ]; then
+                echo "version_type=none" >> $GITHUB_OUTPUT
+                echo "version_label=No Version Impact (docs, style, test, etc.)" >> $GITHUB_OUTPUT
+                echo "✅ Version classified as: NONE (non-functional changes)"
+              else
+                echo "version_type=invalid" >> $GITHUB_OUTPUT
+                echo "version_label=Invalid Commit Format" >> $GITHUB_OUTPUT
+                echo "❌ Invalid commit format detected"
+                exit 1
+              fi
+              ;;
+          esac
+
+      - name: Get current version info
+        id: version_info
+        run: |
+          # 현재 버전 가져오기
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # 다음 릴리즈 버전 파일이 있으면 가져오기
+          if [ -f ".version/next-release.json" ]; then
+            NEXT_VERSION=$(node -p "require('./.version/next-release.json').next")
+            echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "next=Not calculated yet" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate expected version after this PR
+        id: expected_version
+        run: |
+          CURRENT="${{ steps.version_info.outputs.current }}"
+          NEXT="${{ steps.version_info.outputs.next }}"
+          PR_TYPE="${{ steps.classify.outputs.version_type }}"
+
+          echo "📊 Current version: $CURRENT"
+          echo "📊 Next scheduled: $NEXT"
+          echo "📊 This PR type: $PR_TYPE"
+
+          # 현재 버전을 기준으로 이 PR이 병합되면 어떻게 될지 계산
+          IFS='.' read -r major minor patch <<< "$CURRENT"
+
+          if [ "$PR_TYPE" = "major" ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+            expected="${major}.${minor}.${patch}"
+          elif [ "$PR_TYPE" = "minor" ]; then
+            minor=$((minor + 1))
+            patch=0
+            expected="${major}.${minor}.${patch}"
+          elif [ "$PR_TYPE" = "patch" ]; then
+            patch=$((patch + 1))
+            expected="${major}.${minor}.${patch}"
+          fi
+
+          echo "expected=$expected" >> $GITHUB_OUTPUT
+          echo "🚀 Expected version after merge: $expected"
+
+      - name: Update PR with version info
+        if: steps.classify.outputs.version_type != 'unknown'
+        run: |
+          echo "📝 Adding comprehensive version info to PR..."
+
+          EXPECTED="${{ steps.expected_version.outputs.expected }}"
+          NEXT="${{ steps.version_info.outputs.next }}"
+
+          # 다음 릴리즈 정보 구성
+          if [ "$NEXT" = "Not calculated yet" ]; then
+            NEXT_INFO="아직 계산되지 않음 (첫 번째 변경사항)"
+          else
+            NEXT_INFO="$NEXT"
+          fi
+
+          gh pr comment ${{ github.event.number }} --body "## 🏷️ Version Impact Analysis
+
+          **이 PR의 변경 유형**: ${{ steps.classify.outputs.version_label }} (\`${{ steps.classify.outputs.version_type }}\`)
+
+          ### 📊 Version Timeline
+          - **현재 버전**: \`${{ steps.version_info.outputs.current }}\`
+          - **develop의 다음 예정 버전**: \`$NEXT_INFO\`
+          - **이 PR 병합 후 예상 버전**: \`$EXPECTED\` ✨
+
+          ### 📋 Version Rules
+          - \`major\`: Breaking changes (호환성 깨짐)
+          - \`minor\`: New features (새 기능 추가)  
+          - \`patch\`: Bug fixes (버그 수정)
+
+          > 💡 **참고**: 여러 변경사항이 쌓이면 가장 큰 변경 유형이 최종 버전을 결정합니다.
+
+          ---
+          *This analysis is automatically generated by the Version Classification workflow.*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set commit status
+        run: |
+          if [ "${{ steps.classify.outputs.version_type }}" != "invalid" ]; then
+            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
+              --method POST \
+              --field state="success" \
+              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --field description="Version classified as ${{ steps.classify.outputs.version_type }}" \
+              --field context="version-classification"
+          else
+            gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
+              --method POST \
+              --field state="failure" \
+              --field target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --field description="Invalid commit format detected" \
+              --field context="version-classification"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
