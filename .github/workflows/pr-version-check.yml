@@ -31,29 +31,39 @@ jobs:
 
           # GitHub API를 통해 PR의 커밋 목록 가져오기
           echo "📝 Getting commit list using GitHub API..."
-          
-          # 현재 PR의 base SHA와 head SHA를 사용하여 커밋 범위 지정
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          
-          echo "Debug - Base SHA: $BASE_SHA"
-          echo "Debug - Head SHA: $HEAD_SHA"
-          
-          # git log를 사용하여 정확한 커밋 범위에서 커밋 가져오기
-          git log --pretty=format:"%s" $BASE_SHA..$HEAD_SHA > /tmp/commits.txt
-          
-          echo "📋 Commit messages from git log:"
+
+          # GitHub API를 우선적으로 사용하여 PR의 커밋 목록 가져오기
+          COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits)
+
+          if [ -n "$COMMITS_JSON" ]; then
+            echo "$COMMITS_JSON" | jq -r '.[].commit.message' | while IFS= read -r commit_message; do
+              if [[ -n "$commit_message" ]]; then
+                # 첫 번째 줄만 가져오기 (커밋 제목)
+                COMMIT_TITLE=$(echo "$commit_message" | head -1)
+                echo "$COMMIT_TITLE" >> /tmp/commits.txt
+                echo "✅ Extracted commit title: $COMMIT_TITLE"
+              fi
+            done
+          fi
+
+          echo "📋 Commit messages from API:"
           cat /tmp/commits.txt
           echo "📋 File size:"
           wc -l /tmp/commits.txt
 
-          # Fallback: git log에서 가져온 커밋이 없으면 다른 방법 시도
+          # Fallback: API에서 가져온 커밋이 없으면 git log 시도
           if [ ! -s /tmp/commits.txt ]; then
-            echo "⚠️ No commits found with git log, trying alternative approach..."
-            # GitHub API를 통해 PR의 커밋 목록 가져오기 (fallback)
-            COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits)
-            echo "$COMMITS_JSON" | jq -r '.[].commit.message' | head -1 > /tmp/commits.txt
-            echo "📋 Fallback commit messages:"
+            echo "⚠️ No commits found with API, trying git log..."
+            # 현재 PR의 base SHA와 head SHA를 사용하여 커밋 범위 지정
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            
+            echo "Debug - Base SHA: $BASE_SHA"
+            echo "Debug - Head SHA: $HEAD_SHA"
+            
+            # git log를 사용하여 정확한 커밋 범위에서 커밋 가져오기
+            git log --pretty=format:"%s" $BASE_SHA..$HEAD_SHA > /tmp/commits.txt
+            echo "📋 Git log commit messages:"
             cat /tmp/commits.txt
           fi
 
