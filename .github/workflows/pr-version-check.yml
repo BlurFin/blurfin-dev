@@ -25,23 +25,27 @@ jobs:
         run: |
           echo "🔍 Getting PR commits and analyzing..."
 
+          echo "Debug - PR Number: ${{ github.event.number }}"
           echo "Debug - Base SHA: ${{ github.event.pull_request.base.sha }}"
           echo "Debug - Head SHA: ${{ github.event.pull_request.head.sha }}"
 
-          # Get commit messages using git log
-          echo "Running git log command..."
-          git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/commits.txt
+          # GitHub API를 통해 PR의 커밋 목록 가져오기
+          echo "📝 Getting commit list using GitHub API..."
+          COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits)
+          
+          # 커밋 메시지를 임시 파일에 저장
+          echo "$COMMITS_JSON" | jq -r '.[].commit.message' > /tmp/commits.txt
 
-          echo "📋 Commit messages from file:"
+          echo "📋 Commit messages from API:"
           cat /tmp/commits.txt
           echo "📋 File size:"
           wc -l /tmp/commits.txt
 
-          # Fallback: 파일이 비어있으면 다른 방법 시도
+          # Fallback: API에서 가져온 커밋이 없으면 git log 시도
           if [ ! -s /tmp/commits.txt ]; then
-            echo "⚠️ No commits found with git log, trying alternative approach..."
-            git log --oneline ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | cut -d' ' -f2- > /tmp/commits.txt
-            echo "📋 Alternative commit messages:"
+            echo "⚠️ No commits found with API, trying git log..."
+            git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/commits.txt
+            echo "📋 Git log commit messages:"
             cat /tmp/commits.txt
           fi
 
