@@ -9,6 +9,7 @@ jobs:
   code-quality:
     name: Lint and TypeScript Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # Prevent infinite hanging
     env:
       HUSKY: 0 # Disable Husky in CI
 
@@ -22,13 +23,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            package-lock.json
-            apps/*/package-lock.json
 
       - name: Install dependencies
         run: |
+          # Ensure we use public npm registry
+          npm config set registry https://registry.npmjs.org/
           # Skip Husky installation in CI environment
           npm ci --include-workspace-root --ignore-scripts
 
