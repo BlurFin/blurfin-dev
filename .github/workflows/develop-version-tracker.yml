@@ -44,20 +44,28 @@ jobs:
 
           echo "✅ Merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
 
-          # 병합된 PR의 커밋 목록 가져오기
-          echo "📝 Getting commit list from merged PR..."
-          git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/merged_commits.txt
+          # 병합된 PR의 커밋 목록을 GitHub API를 통해 가져오기
+          echo "📝 Getting commit list from merged PR using GitHub API..."
 
+          # GitHub API를 통해 PR의 커밋 목록 가져오기
           COMMIT_LIST=""
-          while IFS= read -r commit_title; do
-            if [[ -n "$commit_title" ]]; then
-              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
-            fi
-          done < /tmp/merged_commits.txt
+          COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/$MERGED_PR_NUMBER/commits)
+
+          if [ -n "$COMMITS_JSON" ]; then
+            echo "$COMMITS_JSON" | jq -r '.[].commit.message' | while IFS= read -r commit_message; do
+              if [[ -n "$commit_message" ]]; then
+                # 첫 번째 줄만 가져오기 (커밋 제목)
+                COMMIT_TITLE=$(echo "$commit_message" | head -1)
+                COMMIT_LIST="$COMMIT_LIST- $COMMIT_TITLE"$'\n'
+                echo "✅ Added commit: $COMMIT_TITLE"
+              fi
+            done
+          fi
 
           # 커밋 목록이 비어있으면 기본 메시지 추가
           if [[ -z "$COMMIT_LIST" ]]; then
             COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
+            echo "⚠️ No commits found, using fallback message"
           fi
 
           # 현재 버전 정보 (0.0.0에서 시작)
