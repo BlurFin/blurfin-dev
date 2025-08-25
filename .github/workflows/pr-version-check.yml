@@ -72,11 +72,15 @@ jobs:
           # 커밋 메시지가 컨벤션을 따르는지 확인
           VALID_COMMITS=true
 
-          # 각 커밋이 conventional commits 형식인지 확인 (major 타입 추가)
+          # 각 커밋의 첫 번째 줄(제목)만 conventional commits 형식 확인 (major 타입 추가)
           while IFS= read -r commit; do
-            if [[ -n "$commit" ]] && ! echo "$commit" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:" ; then
-              echo "❌ Invalid commit format: $commit"
-              VALID_COMMITS=false
+            if [[ -n "$commit" ]]; then
+              # 커밋 메시지의 첫 번째 줄만 추출
+              FIRST_LINE=$(echo "$commit" | head -n 1)
+              if ! echo "$FIRST_LINE" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:" ; then
+                echo "❌ Invalid commit format: $FIRST_LINE"
+                VALID_COMMITS=false
+              fi
             fi
           done <<< "$COMMITS"
 
