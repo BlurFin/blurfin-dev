@@ -25,10 +25,22 @@ jobs:
         id: commits
         run: |
           echo "Getting commits from PR..."
-          # 각 커밋별로 첫 번째 줄만 추출
-          COMMIT_TITLES=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits --jq -r '.[].commit.message' | while IFS= read -r message; do
-            echo "$message" | head -n 1
-          done)
+
+          # GitHub API로 커밋 메시지들을 가져와서 임시 파일에 저장
+          gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits --jq -r '.[].commit.message' > /tmp/commit_messages.txt
+
+          # 각 커밋 메시지의 첫 번째 줄만 추출
+          COMMIT_TITLES=""
+          while IFS= read -r message; do
+            if [[ -n "$message" ]]; then
+              first_line=$(echo "$message" | head -n 1)
+              if [[ -n "$COMMIT_TITLES" ]]; then
+                COMMIT_TITLES="$COMMIT_TITLES"$'\n'"$first_line"
+              else
+                COMMIT_TITLES="$first_line"
+              fi
+            fi
+          done < /tmp/commit_messages.txt
 
           echo "Extracted commit titles:"
           echo "$COMMIT_TITLES"
