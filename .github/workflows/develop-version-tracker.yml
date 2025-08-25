@@ -2,7 +2,7 @@ name: Develop Version Tracker
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     types: [closed]
 
 jobs:
@@ -24,22 +24,57 @@ jobs:
           PR_TITLE="${{ github.event.pull_request.title }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
           PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
           MERGE_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
           echo "Merged PR: $PR_TITLE by $PR_AUTHOR"
+          echo "Branch: $HEAD_BRANCH → $BASE_BRANCH"
 
-          # GitHub API로 직접 댓글 추가 (Git 저장소 불필요)
-          gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
-            --method POST \
-            --field body="## 🎉 develop 브랜치에 병합 완료!
+          # 브랜치별 메시지 다르게 설정
+          if [ "$BASE_BRANCH" = "develop" ]; then
+            MESSAGE="## 🎉 develop 브랜치에 병합 완료!
 
           **병합된 PR:** $PR_TITLE  
           **작성자:** @$PR_AUTHOR  
           **병합 시간:** $MERGE_TIME
 
           > 🚀 이 작업이 develop 브랜치에 성공적으로 병합되었습니다!"
+          elif [ "$BASE_BRANCH" = "main" ]; then
+            MESSAGE="## 🚀 main 브랜치에 배포 완료!
 
-          echo "✅ Successfully added comment to PR #$PR_NUMBER"
+          **배포된 PR:** $PR_TITLE  
+          **배포자:** @$PR_AUTHOR  
+          **배포 시간:** $MERGE_TIME
+
+          > ✨ 이 릴리즈가 main 브랜치에 성공적으로 배포되었습니다!"
+          else
+            MESSAGE="## 📦 브랜치 병합 완료!
+
+          **병합된 PR:** $PR_TITLE  
+          **작성자:** @$PR_AUTHOR  
+          **병합 시간:** $MERGE_TIME"
+          fi
+
+          # GitHub API로 댓글 추가 (재시도 로직 포함)
+          for i in {1..3}; do
+            echo "Attempt $i: Adding comment to PR #$PR_NUMBER..."
+            
+            if gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+              --method POST \
+              --field body="$MESSAGE"; then
+              echo "✅ Successfully added comment to PR #$PR_NUMBER"
+              break
+            else
+              echo "❌ Attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+            
+            if [ $i -eq 3 ]; then
+              echo "🔴 All attempts failed, but continuing workflow..."
+              exit 0  # 댓글 실패해도 워크플로우는 성공으로 처리
+            fi
+          done
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
