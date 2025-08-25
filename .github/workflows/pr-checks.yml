@@ -22,14 +22,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20.17.0"
           cache: "npm"
 
       - name: Install dependencies
         run: |
-          echo "📦 Installing dependencies with Node 18..."
+          echo "📦 Installing dependencies with Node 20..."
           npm config set registry https://registry.npmjs.org/
-          npm install --legacy-peer-deps --ignore-scripts
+          # Use npm ci for fast, reproducible installs
+          npm ci --no-audit --no-fund
 
       - name: Run lint and TypeScript checks
         run: |
