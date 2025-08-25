@@ -70,8 +70,12 @@ jobs:
                 echo "🟢 Found PERF commit!"
               fi
               
-              # Check commit format
-              if ! echo "$commit_title" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:"; then
+              # Check commit format (시스템 생성 커밋 예외 처리)
+              if echo "$commit_title" | grep -qE "^Merge (branch|pull request)"; then
+                echo "🔀 System merge commit - skipping format check: $commit_title"
+              elif echo "$commit_title" | grep -qE "^Revert "; then
+                echo "↩️ System revert commit - skipping format check: $commit_title"
+              elif ! echo "$commit_title" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:"; then
                 echo "❌ Invalid commit format: $commit_title"
                 VALID_COMMITS=false
               else
