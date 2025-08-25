@@ -25,11 +25,25 @@ jobs:
         run: |
           echo "🔍 Getting PR commits and analyzing..."
 
+          echo "Debug - Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Debug - Head SHA: ${{ github.event.pull_request.head.sha }}"
+
           # Get commit messages using git log
+          echo "Running git log command..."
           git log --pretty=format:"%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > /tmp/commits.txt
 
-          echo "📋 Commit messages:"
+          echo "📋 Commit messages from file:"
           cat /tmp/commits.txt
+          echo "📋 File size:"
+          wc -l /tmp/commits.txt
+
+          # Fallback: 파일이 비어있으면 다른 방법 시도
+          if [ ! -s /tmp/commits.txt ]; then
+            echo "⚠️ No commits found with git log, trying alternative approach..."
+            git log --oneline ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | cut -d' ' -f2- > /tmp/commits.txt
+            echo "📋 Alternative commit messages:"
+            cat /tmp/commits.txt
+          fi
 
           # Analyze version impact
           HAS_MAJOR=false
@@ -86,16 +100,25 @@ jobs:
 
           echo "📊 Final result: $VERSION_TYPE - $CHANGE_DESC"
 
-          # Create commit list for PR comment
+          # Create commit list for PR comment (항상 생성)
+          echo "📝 Creating commit list for PR comment..."
           COMMIT_LIST=""
           while IFS= read -r commit_title; do
             if [[ -n "$commit_title" ]]; then
               COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+              echo "✅ Added to commit list: $commit_title"
             fi
           done < /tmp/commits.txt
 
-          # Add PR comment if valid
+          # 커밋 목록이 비어있으면 기본 메시지 추가
+          if [[ -z "$COMMIT_LIST" ]]; then
+            COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
+            echo "⚠️ No commits found, using fallback message"
+          fi
+
+          # Add PR comment if valid (커밋 목록은 항상 표시)
           if [ "$VERSION_TYPE" != "invalid" ]; then
+            echo "📝 Adding PR comment with version: $CHANGE_DESC"
             gh pr comment ${{ github.event.number }} --body "## 📦 $CHANGE_DESC
 
           ### 📋 커밋 목록
