@@ -44,30 +44,6 @@ jobs:
 
           echo "✅ Merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
 
-          # 병합된 PR의 커밋 목록을 GitHub API를 통해 가져오기
-          echo "📝 Getting commit list from merged PR using GitHub API..."
-
-          # GitHub API를 통해 PR의 커밋 목록 가져오기
-          COMMIT_LIST=""
-          COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/$MERGED_PR_NUMBER/commits)
-
-          if [ -n "$COMMITS_JSON" ]; then
-            echo "$COMMITS_JSON" | jq -r '.[].commit.message' | while IFS= read -r commit_message; do
-              if [[ -n "$commit_message" ]]; then
-                # 첫 번째 줄만 가져오기 (커밋 제목)
-                COMMIT_TITLE=$(echo "$commit_message" | head -1)
-                COMMIT_LIST="$COMMIT_LIST- $COMMIT_TITLE"$'\n'
-                echo "✅ Added commit: $COMMIT_TITLE"
-              fi
-            done
-          fi
-
-          # 커밋 목록이 비어있으면 기본 메시지 추가
-          if [[ -z "$COMMIT_LIST" ]]; then
-            COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
-            echo "⚠️ No commits found, using fallback message"
-          fi
-
           # 현재 버전 정보 (0.0.0에서 시작)
           CURRENT_VERSION="0.0.0"
 
@@ -88,16 +64,7 @@ jobs:
             
             # 새로운 PR 정보를 기존 내용에 추가
             NEW_PR_SECTION="
-          <details>
-          <summary><strong>📋 $MERGED_PR_TITLE</strong></summary>
-
-          **PR 번호:** #$MERGED_PR_NUMBER  
-          **작성자:** @$MERGED_PR_AUTHOR  
-          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
-          ### 📝 커밋 목록
-          $COMMIT_LIST
-          </details>"
+          - [$MERGED_PR_TITLE](#$MERGED_PR_NUMBER)"
 
             # 기존 내용에서 "### 🔄 병합된 작업들" 섹션 찾아서 새로운 내용 추가
             if echo "$EXISTING_BODY" | grep -q "### 🔄 병합된 작업들"; then
@@ -118,24 +85,30 @@ jobs:
           else
             echo "📝 Creating new version status comment"
             
+            # 이전에 병합된 모든 PR들을 가져오기
+            echo "📋 Getting all previously merged PRs..."
+            MERGED_PRS=$(gh api repos/${{ github.repository }}/pulls \
+              --jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' \
+              | sort -t'|' -k2 -n)
+            
+            MERGED_PR_LIST=""
+            if [ -n "$MERGED_PRS" ]; then
+              echo "$MERGED_PRS" | while IFS='|' read -r pr_title pr_number; do
+                if [[ -n "$pr_title" && -n "$pr_number" ]]; then
+                  MERGED_PR_LIST="$MERGED_PR_LIST
+          - [$pr_title](#$pr_number)"
+                  echo "✅ Added merged PR: $pr_title (#$pr_number)"
+                fi
+              done
+            fi
+            
             # 새로운 댓글 생성
             COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
 
           **현재 버전:** \`$CURRENT_VERSION\`  
           **다음 릴리즈 버전:** \`$NEXT_VERSION\`
 
-          ### 🔄 병합된 작업들
-
-          <details>
-          <summary><strong>📋 $MERGED_PR_TITLE</strong></summary>
-
-          **PR 번호:** #$MERGED_PR_NUMBER  
-          **작성자:** @$MERGED_PR_AUTHOR  
-          **병합 시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
-          ### 📝 커밋 목록
-          $COMMIT_LIST
-          </details>"
+          ### 🔄 병합된 작업들$MERGED_PR_LIST"
 
             gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
               --method POST \
