@@ -37,12 +37,12 @@ jobs:
 
           echo "📋 Found develop → main PR: #$DEVELOP_TO_MAIN_PR"
 
-          # 병합된 PR 정보 가져오기
+          # 현재 병합된 PR 정보 가져오기 (develop에 병합된 작업물 PR)
           MERGED_PR_TITLE="${{ github.event.pull_request.title }}"
           MERGED_PR_NUMBER="${{ github.event.pull_request.number }}"
           MERGED_PR_AUTHOR="${{ github.event.pull_request.user.login }}"
 
-          echo "✅ Merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
+          echo "✅ Current merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
 
           # 현재 버전 정보 (0.0.0에서 시작)
           CURRENT_VERSION="0.0.0"
@@ -62,7 +62,7 @@ jobs:
             # 기존 댓글 내용 가져오기
             EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID --jq '.body')
             
-            # 새로운 PR 정보를 기존 내용에 추가
+            # 새로운 PR 정보를 기존 내용에 추가 (현재 병합된 작업물 PR)
             NEW_PR_SECTION="
           - [$MERGED_PR_TITLE](#$MERGED_PR_NUMBER)"
 
