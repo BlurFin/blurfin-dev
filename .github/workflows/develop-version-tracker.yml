@@ -89,9 +89,20 @@ jobs:
             echo "📋 Getting all previously merged PRs..."
             
             # 임시 파일에 병합된 PR 정보 저장
-            gh api repos/${{ github.repository }}/pulls \
-              --jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' \
-              | sort -t'|' -k2 -n > /tmp/merged_prs.txt
+            echo "🔍 Debug: Getting all PRs first..."
+            gh api repos/${{ github.repository }}/pulls > /tmp/all_prs.json
+            
+            echo "🔍 Debug: Filtering merged PRs..."
+            cat /tmp/all_prs.json | jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' > /tmp/merged_prs.txt
+            
+            echo "🔍 Debug: All PRs count:"
+            cat /tmp/all_prs.json | jq 'length'
+            
+            echo "🔍 Debug: Closed PRs count:"
+            cat /tmp/all_prs.json | jq '[.[] | select(.state == "closed")] | length'
+            
+            echo "🔍 Debug: Merged PRs count:"
+            cat /tmp/all_prs.json | jq '[.[] | select(.merged_at != null)] | length'
             
             # 임시 파일에서 PR 정보를 읽어서 리스트 생성
             MERGED_PR_LIST=""
