@@ -90,7 +90,7 @@ jobs:
             
             # 임시 파일에 병합된 PR 정보 저장
             echo "🔍 Debug: Getting all PRs first..."
-            gh api repos/${{ github.repository }}/pulls > /tmp/all_prs.json
+            gh api repos/${{ github.repository }}/pulls?state=all > /tmp/all_prs.json
             
             echo "🔍 Debug: Filtering merged PRs..."
             cat /tmp/all_prs.json | jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' > /tmp/merged_prs.txt
