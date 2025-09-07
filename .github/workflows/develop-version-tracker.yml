@@ -53,6 +53,7 @@ jobs:
             while IFS='|' read -r pr_title pr_number; do
               if [[ -n "$pr_title" && -n "$pr_number" ]]; then
                 echo "✅ Found merged PR: $pr_title (#$pr_number)"
+                echo "🔗 PR Link: https://github.com/${{ github.repository }}/pull/$pr_number"
               fi
             done < /tmp/merged_prs.txt
           else
