@@ -1,15 +1,13 @@
 name: Develop Version Tracker
 
 on:
-  pull_request:
-    branches: [develop, main]
-    types: [closed]
+  push:
+    branches: [develop]
 
 jobs:
   track-version:
-    name: Update Develop Version Status
+    name: Debug Merged PRs
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
 
     permissions:
       contents: read
@@ -21,126 +19,45 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Find develop to main PR and update version status
+      - name: Debug merged PRs
         run: |
-          echo "🔍 Finding develop → main PR to update version status..."
+          echo "🔍 Debug: Getting all PRs first..."
+          gh api repos/${{ github.repository }}/pulls?state=all > /tmp/all_prs.json
 
-          # 현재 develop → main PR 찾기
-          DEVELOP_TO_MAIN_PR=$(gh api repos/${{ github.repository }}/pulls \
-            --jq '.[] | select(.head.ref == "develop" and .base.ref == "main" and .state == "open") | .number' \
-            | head -1)
+          echo "🔍 Debug: Filtering merged PRs..."
+          cat /tmp/all_prs.json | jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' > /tmp/merged_prs.txt
 
-          if [ -z "$DEVELOP_TO_MAIN_PR" ]; then
-            echo "⚠️ No open develop → main PR found. Skipping version tracking."
-            exit 0
-          fi
+          echo "🔍 Debug: All PRs count:"
+          cat /tmp/all_prs.json | jq 'length'
 
-          echo "📋 Found develop → main PR: #$DEVELOP_TO_MAIN_PR"
+          echo "🔍 Debug: Closed PRs count:"
+          cat /tmp/all_prs.json | jq '[.[] | select(.state == "closed")] | length'
 
-          # 현재 병합된 PR 정보 가져오기 (develop에 병합된 작업물 PR)
-          MERGED_PR_TITLE="${{ github.event.pull_request.title }}"
-          MERGED_PR_NUMBER="${{ github.event.pull_request.number }}"
-          MERGED_PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          echo "🔍 Debug: Merged PRs count:"
+          cat /tmp/all_prs.json | jq '[.[] | select(.merged_at != null)] | length'
 
-          echo "✅ Current merged PR: #$MERGED_PR_NUMBER - $MERGED_PR_TITLE by $MERGED_PR_AUTHOR"
+          echo "🔍 Debug: Develop base PRs count:"
+          cat /tmp/all_prs.json | jq '[.[] | select(.base.ref == "develop")] | length'
 
-          # 현재 버전 정보 (0.0.0에서 시작)
-          CURRENT_VERSION="0.0.0"
+          echo "🔍 Debug: Develop base + closed PRs count:"
+          cat /tmp/all_prs.json | jq '[.[] | select(.base.ref == "develop" and .state == "closed")] | length'
 
-          # 다음 버전 계산 (간단한 예시 - 실제로는 더 복잡한 로직 필요)
-          # TODO: .version/next-release.json 파일 읽거나 conventional-changelog로 계산
-          NEXT_VERSION="0.1.0"  # 임시로 설정
+          echo "🔍 Debug: Develop base + closed + merged PRs count:"
+          cat /tmp/all_prs.json | jq '[.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null)] | length'
 
-          # 기존 댓글 찾기 (봇이 작성한 댓글 중에서)
-          EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Develop 브랜치 버전 상태"))) | .id' \
-            | head -1)
-
-          if [ -n "$EXISTING_COMMENT_ID" ]; then
-            echo "🔄 Updating existing comment #$EXISTING_COMMENT_ID"
+          if [ -s /tmp/merged_prs.txt ]; then
+            echo "📋 Found merged PRs in file:"
+            cat /tmp/merged_prs.txt
+            echo "📋 Processing merged PRs..."
             
-            # 기존 댓글 내용 가져오기
-            EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID --jq '.body')
-            
-            # 새로운 PR 정보를 기존 내용에 추가 (현재 병합된 작업물 PR)
-            NEW_PR_SECTION="
-          - [$MERGED_PR_TITLE](#$MERGED_PR_NUMBER)"
-
-            # 기존 내용에서 "### 🔄 병합된 작업들" 섹션 찾아서 새로운 내용 추가
-            if echo "$EXISTING_BODY" | grep -q "### 🔄 병합된 작업들"; then
-              # 기존 내용에서 "### 🔄 병합된 작업들" 섹션을 찾아서 그 안에 새로운 PR 정보 추가
-              # sed를 사용하여 "### 🔄 병합된 작업들" 다음 줄에 새로운 PR 정보 삽입
-              UPDATED_BODY=$(echo "$EXISTING_BODY" | sed "/### 🔄 병합된 작업들/a\\$NEW_PR_SECTION")
-            else
-              # 기존 내용에 새로운 섹션 추가
-              UPDATED_BODY="$EXISTING_BODY
-
-          ### 🔄 병합된 작업들$NEW_PR_SECTION"
-            fi
-
-            # 댓글 업데이트
-            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID \
-              --method PATCH \
-              --field body="$UPDATED_BODY"
+            while IFS='|' read -r pr_title pr_number; do
+              if [[ -n "$pr_title" && -n "$pr_number" ]]; then
+                echo "✅ Found merged PR: $pr_title (#$pr_number)"
+              fi
+            done < /tmp/merged_prs.txt
           else
-            echo "📝 Creating new version status comment"
-            
-            # 이전에 병합된 모든 PR들을 가져오기
-            echo "📋 Getting all previously merged PRs..."
-            
-            # 임시 파일에 병합된 PR 정보 저장
-            echo "🔍 Debug: Getting all PRs first..."
-            gh api repos/${{ github.repository }}/pulls?state=all > /tmp/all_prs.json
-            
-            echo "🔍 Debug: Filtering merged PRs..."
-            cat /tmp/all_prs.json | jq '.[] | select(.base.ref == "develop" and .state == "closed" and .merged_at != null) | "\(.title)|\(.number)"' > /tmp/merged_prs.txt
-            
-            echo "🔍 Debug: All PRs count:"
-            cat /tmp/all_prs.json | jq 'length'
-            
-            echo "🔍 Debug: Closed PRs count:"
-            cat /tmp/all_prs.json | jq '[.[] | select(.state == "closed")] | length'
-            
-            echo "🔍 Debug: Merged PRs count:"
-            cat /tmp/all_prs.json | jq '[.[] | select(.merged_at != null)] | length'
-            
-            # 임시 파일에서 PR 정보를 읽어서 리스트 생성
-            MERGED_PR_LIST=""
-            if [ -s /tmp/merged_prs.txt ]; then
-              echo "📋 Found merged PRs in file:"
-              cat /tmp/merged_prs.txt
-              echo "📋 Processing merged PRs..."
-              
-              while IFS='|' read -r pr_title pr_number; do
-                if [[ -n "$pr_title" && -n "$pr_number" ]]; then
-                  MERGED_PR_LIST="$MERGED_PR_LIST
-          - [$pr_title](#$pr_number)"
-                  echo "✅ Added merged PR: $pr_title (#$pr_number)"
-                fi
-              done < /tmp/merged_prs.txt
-              
-              echo "📋 Final MERGED_PR_LIST:"
-              echo "$MERGED_PR_LIST"
-            else
-              echo "⚠️ No merged PRs found in file"
-            fi
-            
-            # 새로운 댓글 생성
-            COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
-
-          **현재 버전:** \`$CURRENT_VERSION\`  
-          **다음 릴리즈 버전:** \`$NEXT_VERSION\`
-
-          ### 🔄 병합된 작업들
-
-          $MERGED_PR_LIST"
-
-            gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
-              --method POST \
-              --field body="$COMMENT_BODY"
+            echo "⚠️ No merged PRs found in file"
           fi
-
-          echo "✅ Successfully updated version status on develop → main PR #$DEVELOP_TO_MAIN_PR"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
