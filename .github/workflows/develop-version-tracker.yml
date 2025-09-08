@@ -161,6 +161,7 @@ jobs:
               echo "### 🔄 병합된 작업들" >> /tmp/comment.txt
               echo "$MERGED_PR_LIST" >> /tmp/comment.txt
               
+              # 파일에서 댓글 내용 읽기
               COMMENT_BODY=$(cat /tmp/comment.txt)
               
               # 기존 댓글 삭제 (봇이 작성한 댓글 중에서)
@@ -176,9 +177,9 @@ jobs:
               
               # 새로운 댓글 생성
               echo "📝 Creating new version status comment"
-              gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
+              echo "$COMMENT_BODY" | gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
                 --method POST \
-                --field body="$COMMENT_BODY"
+                --input -
               
               echo "✅ Successfully updated version status on develop → main PR #$DEVELOP_TO_MAIN_PR"
             else
