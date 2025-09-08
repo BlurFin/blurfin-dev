@@ -130,19 +130,26 @@ jobs:
               # 병합된 PR 리스트 생성 (오래된 것부터 상단에)
               MERGED_PR_LIST=""
               if [ -s /tmp/merged_prs.txt ]; then
+                # 임시 파일에 버전 영향이 있는 PR들 저장
+                echo "" > /tmp/version_prs.txt
+                
                 # 파일을 역순으로 읽어서 오래된 것부터 처리
                 tac /tmp/merged_prs.txt | while IFS='|' read -r pr_title pr_number; do
                   if [[ -n "$pr_title" && -n "$pr_number" ]]; then
                     CLEAN_TITLE=$(echo "$pr_title" | sed 's/^"//; s/"$//')
                     CLEAN_NUMBER=$(echo "$pr_number" | sed 's/^"//; s/"$//')
                     
-                    # 버전 영향이 있는 PR만 리스트에 추가
+                    # 버전 영향이 있는 PR만 임시 파일에 추가
                     if echo "$CLEAN_TITLE" | grep -qE "^(major|feat|fix|perf):"; then
-                      MERGED_PR_LIST="$MERGED_PR_LIST
-          - [$CLEAN_TITLE](https://github.com/${{ github.repository }}/pull/$CLEAN_NUMBER)"
+                      echo "- [$CLEAN_TITLE](https://github.com/${{ github.repository }}/pull/$CLEAN_NUMBER)" >> /tmp/version_prs.txt
                     fi
                   fi
                 done
+                
+                # 임시 파일에서 내용을 읽어서 MERGED_PR_LIST 생성
+                if [ -s /tmp/version_prs.txt ]; then
+                  MERGED_PR_LIST=$(cat /tmp/version_prs.txt | sed 's/^/          /')
+                fi
               fi
               
               # 댓글 내용 생성
@@ -154,22 +161,22 @@ jobs:
           ### 🔄 병합된 작업들
           $MERGED_PR_LIST"
               
-              # 기존 댓글 찾기 (봇이 작성한 댓글 중에서)
+              # 기존 댓글 삭제 (봇이 작성한 댓글 중에서)
               EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
                 --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Develop 브랜치 버전 상태"))) | .id' \
                 | head -1)
               
               if [ -n "$EXISTING_COMMENT_ID" ]; then
-                echo "🔄 Updating existing comment #$EXISTING_COMMENT_ID"
+                echo "🗑️ Deleting existing comment #$EXISTING_COMMENT_ID"
                 gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID \
-                  --method PATCH \
-                  --field body="$COMMENT_BODY"
-              else
-                echo "📝 Creating new version status comment"
-                gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
-                  --method POST \
-                  --field body="$COMMENT_BODY"
+                  --method DELETE
               fi
+              
+              # 새로운 댓글 생성
+              echo "📝 Creating new version status comment"
+              gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
+                --method POST \
+                --field body="$COMMENT_BODY"
               
               echo "✅ Successfully updated version status on develop → main PR #$DEVELOP_TO_MAIN_PR"
             else
