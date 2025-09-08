@@ -148,7 +148,7 @@ jobs:
                 
                 # 임시 파일에서 내용을 읽어서 MERGED_PR_LIST 생성
                 if [ -s /tmp/version_prs.txt ]; then
-                  MERGED_PR_LIST=$(cat /tmp/version_prs.txt | sed 's/^/          /')
+                  MERGED_PR_LIST=$(cat /tmp/version_prs.txt)
                 fi
               fi
               
