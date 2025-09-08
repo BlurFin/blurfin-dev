@@ -177,9 +177,13 @@ jobs:
               
               # 새로운 댓글 생성
               echo "📝 Creating new version status comment"
-              echo "$COMMENT_BODY" | gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
+              
+              # JSON 형태로 댓글 내용 생성
+              echo "{\"body\": $(echo "$COMMENT_BODY" | jq -R -s .)}" > /tmp/comment.json
+              
+              gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
                 --method POST \
-                --input -
+                --input /tmp/comment.json
               
               echo "✅ Successfully updated version status on develop → main PR #$DEVELOP_TO_MAIN_PR"
             else
