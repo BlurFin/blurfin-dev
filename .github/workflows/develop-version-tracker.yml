@@ -153,13 +153,16 @@ jobs:
               fi
               
               # 댓글 내용 생성
-              COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
+              COMMENT_BODY=$(cat <<EOF
+## 📦 Develop 브랜치 버전 상태
 
 **현재 버전:** \`$CURRENT_VERSION\`  
 **다음 릴리즈 버전:** \`$NEXT_VERSION\`
 
 ### 🔄 병합된 작업들
-$MERGED_PR_LIST"
+$MERGED_PR_LIST
+EOF
+)
               
               # 기존 댓글 삭제 (봇이 작성한 댓글 중에서)
               EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
