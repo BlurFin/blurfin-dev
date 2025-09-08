@@ -61,23 +61,27 @@ jobs:
             
             while IFS='|' read -r pr_title pr_number; do
               if [[ -n "$pr_title" && -n "$pr_number" ]]; then
-                echo "✅ Found merged PR: $pr_title (#$pr_number)"
-                echo "🔗 PR Link: https://github.com/${{ github.repository }}/pull/$pr_number"
+                # 따옴표 제거 및 정리
+                CLEAN_TITLE=$(echo "$pr_title" | sed 's/^"//; s/"$//')
+                CLEAN_NUMBER=$(echo "$pr_number" | sed 's/^"//; s/"$//')
                 
-                # PR 제목에서 버전 타입 분석
-                if echo "$pr_title" | grep -qE "^major:"; then
+                echo "✅ Found merged PR: $CLEAN_TITLE (#$CLEAN_NUMBER)"
+                echo "🔗 PR Link: https://github.com/${{ github.repository }}/pull/$CLEAN_NUMBER"
+                
+                # PR 제목에서 버전 타입 분석 (정리된 제목 사용)
+                if echo "$CLEAN_TITLE" | grep -qE "^major:"; then
                   MAJOR_COUNT=$((MAJOR_COUNT + 1))
                   echo "🔴 MAJOR version impact detected"
-                elif echo "$pr_title" | grep -qE "^feat:"; then
+                elif echo "$CLEAN_TITLE" | grep -qE "^feat:"; then
                   MINOR_COUNT=$((MINOR_COUNT + 1))
                   echo "🟡 MINOR version impact detected"
-                elif echo "$pr_title" | grep -qE "^fix:"; then
+                elif echo "$CLEAN_TITLE" | grep -qE "^fix:"; then
                   PATCH_COUNT=$((PATCH_COUNT + 1))
                   echo "🟢 PATCH version impact detected"
-                elif echo "$pr_title" | grep -qE "^perf:"; then
+                elif echo "$CLEAN_TITLE" | grep -qE "^perf:"; then
                   PATCH_COUNT=$((PATCH_COUNT + 1))
                   echo "🟢 PATCH version impact detected"
-                elif echo "$pr_title" | grep -qE "^(docs|style|test|chore):"; then
+                elif echo "$CLEAN_TITLE" | grep -qE "^(docs|style|test|chore):"; then
                   echo "⚪ NO version impact (docs/style/test/chore)"
                 else
                   echo "❓ Unknown version impact (system merge or invalid format)"
