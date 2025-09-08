@@ -139,8 +139,8 @@ jobs:
                     CLEAN_TITLE=$(echo "$pr_title" | sed 's/^"//; s/"$//')
                     CLEAN_NUMBER=$(echo "$pr_number" | sed 's/^"//; s/"$//')
                     
-                    # 버전 영향이 있는 PR만 임시 파일에 추가
-                    if echo "$CLEAN_TITLE" | grep -qE "^(major|feat|fix|perf):"; then
+                    # 버전 영향이 있는 PR만 임시 파일에 추가 (대소문자 구분 없이)
+                    if echo "$CLEAN_TITLE" | grep -qiE "^(major|feat|fix|perf|docs|style|test|chore|ci|build|refactor|revert)[:/]"; then
                       echo "- [$CLEAN_TITLE](https://github.com/${{ github.repository }}/pull/$CLEAN_NUMBER)" >> /tmp/version_prs.txt
                     fi
                   fi
@@ -155,11 +155,11 @@ jobs:
               # 댓글 내용 생성
               COMMENT_BODY="## 📦 Develop 브랜치 버전 상태
 
-          **현재 버전:** \`$CURRENT_VERSION\`  
-          **다음 릴리즈 버전:** \`$NEXT_VERSION\`
+**현재 버전:** \`$CURRENT_VERSION\`  
+**다음 릴리즈 버전:** \`$NEXT_VERSION\`
 
-          ### 🔄 병합된 작업들
-          $MERGED_PR_LIST"
+### 🔄 병합된 작업들
+$MERGED_PR_LIST"
               
               # 기존 댓글 삭제 (봇이 작성한 댓글 중에서)
               EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$DEVELOP_TO_MAIN_PR/comments \
