@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "dev:local": "next dev --turbopack --hostname local.blurfin.com --port 3000",
+    "dev": "node server.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

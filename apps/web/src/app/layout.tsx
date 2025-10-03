@@ -13,11 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://www.blurfin.com'),
   title: "BlurFin",
   description: "원하는 관상어를 찾아보세요.",
-  icons: {
-    icon: '/images/BlurFin_Icon.png',
-  },
   openGraph: {
     title: "BlurFin",
     description: "원하는 관상어를 찾아보세요.",

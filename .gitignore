@@ -1,6 +1,15 @@
 node_modules
 docs
 
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# SSL certificates (local development only)
+**/.cert/
+
 # Version tracking (keep in git for collaboration)
 # .version/
 
