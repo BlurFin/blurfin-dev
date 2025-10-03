@@ -1,1 +1,26 @@
 node_modules
+docs
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# SSL certificates (local development only)
+**/.cert/
+
+# Version tracking (keep in git for collaboration)
+# .version/
+
+# Yarn
+yarn-error.log
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# npm (제거할 파일들)
+package-lock.json
+npm-debug.log*

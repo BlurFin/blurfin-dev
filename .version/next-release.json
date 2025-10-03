@@ -1,0 +1,15 @@
+{
+  "current": "0.0.0",
+  "next": "0.0.0",
+  "changeType": "none",
+  "updatedAt": "2025-08-25T08:41:07.288Z",
+  "changes": {
+    "major": false,
+    "minor": true,
+    "patch": false
+  },
+  "recommendation": {
+    "releaseType": "none",
+    "reason": "Calculated using conventional-recommended-bump"
+  }
+}

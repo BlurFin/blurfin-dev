@@ -1,0 +1,189 @@
+name: Version Classification
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  classify-version:
+    name: Classify Version Impact
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR commits and analyze
+        run: |
+          echo "🔍 Getting PR commits and analyzing..."
+
+          echo "Debug - PR Number: ${{ github.event.number }}"
+          echo "Debug - Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Debug - Head SHA: ${{ github.event.pull_request.head.sha }}"
+
+          # GitHub API를 우선적으로 사용하여 PR의 커밋 목록 가져오기
+          echo "📝 Getting commit list using GitHub API..."
+
+          # GitHub API를 통해 PR의 커밋 목록 가져오기
+          COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits)
+
+          if [ -n "$COMMITS_JSON" ]; then
+            # jq에서 직접 각 커밋의 첫 번째 줄만 추출
+            echo "$COMMITS_JSON" | jq -r '.[].commit.message | split("\n")[0]' > /tmp/commits.txt
+            
+            echo "📋 Commit messages from API:"
+            cat /tmp/commits.txt
+            echo "📋 File size:"
+            wc -l /tmp/commits.txt
+          fi
+
+          # Fallback: API에서 가져온 커밋이 없으면 git log 시도
+          if [ ! -s /tmp/commits.txt ]; then
+            echo "⚠️ No commits found with API, trying git log..."
+            # git log를 사용하여 정확한 커밋 범위에서 커밋 가져오기
+            echo "📝 Getting commit list using git log..."
+            
+            # 현재 PR의 base SHA와 head SHA를 사용하여 커밋 범위 지정
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            
+            echo "Debug - Base SHA: $BASE_SHA"
+            echo "Debug - Head SHA: $HEAD_SHA"
+            
+            # git log를 사용하여 정확한 커밋 범위에서 커밋 가져오기
+            git log --pretty=format:"%s" $BASE_SHA..$HEAD_SHA > /tmp/commits.txt
+            
+            echo "📋 Commit messages from git log:"
+            cat /tmp/commits.txt
+            echo "📋 File size:"
+            wc -l /tmp/commits.txt
+
+            # Fallback: git log에서 가져온 커밋이 없으면 다른 방법 시도
+            if [ ! -s /tmp/commits.txt ]; then
+              echo "⚠️ No commits found with git log, trying alternative approach..."
+              # GitHub API를 통해 PR의 커밋 목록 가져오기 (fallback)
+              COMMITS_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits)
+              echo "$COMMITS_JSON" | jq -r '.[].commit.message' | head -1 > /tmp/commits.txt
+              echo "📋 Fallback commit messages:"
+              cat /tmp/commits.txt
+            fi
+          fi
+
+          # Analyze version impact
+          HAS_MAJOR=false
+          HAS_MINOR=false
+          HAS_PATCH=false
+          VALID_COMMITS=true
+
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              echo "Processing: $commit_title"
+              
+              # Check version impact
+              if echo "$commit_title" | grep -qE "^major:"; then
+                HAS_MAJOR=true
+                echo "🔴 Found MAJOR commit!"
+              elif echo "$commit_title" | grep -qE "^feat:"; then
+                HAS_MINOR=true
+                echo "🟡 Found MINOR commit!"
+              elif echo "$commit_title" | grep -qE "^fix:"; then
+                HAS_PATCH=true
+                echo "🟢 Found PATCH commit!"
+              elif echo "$commit_title" | grep -qE "^perf:"; then
+                HAS_PATCH=true
+                echo "🟢 Found PERF commit!"
+              fi
+              
+              # Check commit format (시스템 생성 커밋 예외 처리)
+              if echo "$commit_title" | grep -qE "^Merge (branch|pull request)"; then
+                echo "🔀 System merge commit - skipping format check: $commit_title"
+              elif echo "$commit_title" | grep -qE "^Revert "; then
+                echo "↩️ System revert commit - skipping format check: $commit_title"
+              elif ! echo "$commit_title" | grep -qE "^(major|feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?:"; then
+                echo "❌ Invalid commit format: $commit_title"
+                VALID_COMMITS=false
+              else
+                echo "✅ Valid commit format: $commit_title"
+              fi
+            fi
+          done < /tmp/commits.txt
+
+          # Determine version type
+          if [ "$VALID_COMMITS" = "false" ]; then
+            VERSION_TYPE="invalid"
+            CHANGE_DESC="잘못된 커밋 형식"
+          elif [ "$HAS_MAJOR" = "true" ]; then
+            VERSION_TYPE="major"
+            CHANGE_DESC="Major 버전 증가 (1.0.0)"
+          elif [ "$HAS_MINOR" = "true" ]; then
+            VERSION_TYPE="minor"
+            CHANGE_DESC="Minor 버전 증가 (0.1.0)"
+          elif [ "$HAS_PATCH" = "true" ]; then
+            VERSION_TYPE="patch"
+            CHANGE_DESC="Patch 버전 증가 (0.0.1)"
+          else
+            VERSION_TYPE="none"
+            CHANGE_DESC="버전 변화 없음 (0.0.0)"
+          fi
+
+          echo "📊 Final result: $VERSION_TYPE - $CHANGE_DESC"
+
+          # Create commit list for PR comment (항상 생성)
+          echo "📝 Creating commit list for PR comment..."
+          COMMIT_LIST=""
+          while IFS= read -r commit_title; do
+            if [[ -n "$commit_title" ]]; then
+              COMMIT_LIST="$COMMIT_LIST- $commit_title"$'\n'
+              echo "✅ Added to commit list: $commit_title"
+            fi
+          done < /tmp/commits.txt
+
+          # 커밋 목록이 비어있으면 기본 메시지 추가
+          if [[ -z "$COMMIT_LIST" ]]; then
+            COMMIT_LIST="- (커밋 정보를 가져올 수 없습니다)"$'\n'
+            echo "⚠️ No commits found, using fallback message"
+          fi
+
+          # Add PR comment if valid (커밋 목록은 항상 표시)
+          if [ "$VERSION_TYPE" != "invalid" ]; then
+            echo "📝 Adding PR comment with version: $CHANGE_DESC"
+            
+            # 새로운 댓글 내용 생성
+            COMMENT_BODY="## 📦 $CHANGE_DESC
+
+          ### 📋 커밋 목록
+          $COMMIT_LIST"
+
+            # 기존 댓글 찾기 (봇이 작성한 댓글 중에서)
+            EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("📦"))) | .id' \
+              | head -1)
+
+            if [ -n "$EXISTING_COMMENT_ID" ]; then
+              echo "🔄 Updating existing comment #$EXISTING_COMMENT_ID"
+              gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT_ID \
+                --method PATCH \
+                --field body="$COMMENT_BODY"
+            else
+              echo "📝 Creating new version comment"
+              gh pr comment ${{ github.event.number }} --body "$COMMENT_BODY"
+            fi
+          fi
+
+          # 워크플로우 실패 처리 (수동 상태 체크 완전 제거)
+          if [ "$VERSION_TYPE" = "invalid" ]; then
+            echo "❌ Invalid commit format detected - failing workflow"
+            exit 1
+          else
+            echo "✅ Version classification completed: $VERSION_TYPE"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

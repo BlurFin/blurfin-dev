@@ -1,0 +1,51 @@
+name: Lint Check
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  lint-check:
+    name: ESLint Code Quality Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HUSKY: 0 # Disable Husky in CI
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.17.0"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies with yarn..."
+          rm -rf node_modules/
+          rm -f package-lock.json
+          yarn install --frozen-lockfile
+
+      - name: Run lint checks on changed files
+        run: |
+          echo "🔍 Checking for files to lint..."
+
+          # 변경된 파일 중 lint 대상 파일이 있는지 확인
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep -E '\.(ts|tsx|js|jsx)$' | grep -E '^(apps|packages)/' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "📋 No TypeScript/JavaScript files changed in apps or packages directories"
+            echo "✅ Lint check skipped - no relevant files to check"
+          else
+            echo "📋 Found files to lint:"
+            echo "$CHANGED_FILES"
+            echo "🔍 Running lint checks on changed files..."
+            yarn lint:changed
+            echo "✅ Lint checks passed!"
+          fi
